@@ -11,21 +11,28 @@
   "author": "Rupesh Jadhav",
   "license": "ISC",
   "devDependencies": {
+    "@types/cheerio": "^0.22.35",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.10",
+    "@types/pg": "^8.11.11",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
+    "axios": "^1.7.9",
+    "bullmq": "^5.37.0",
+    "cheerio": "^1.0.0",
     "concurrently": "^9.1.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "prisma": "^6.2.1"
+    "pg": "^8.13.1",
+    "prisma": "^6.2.1",
+    "redis": "^4.7.0"
   }
 }
