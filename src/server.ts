@@ -21,6 +21,14 @@ app.use(express.urlencoded({ extended: true, limit: "20kb" }));
 app.use(cookieParser());
 
 
+// Import routes
+import crawleddocumentRoutes from "./routes/crawleddocument.routes";
+
+// Routes
+app.use("/api/v1/crawleddocuments", crawleddocumentRoutes);
+
+
+
 
 
 async function bootServer() {

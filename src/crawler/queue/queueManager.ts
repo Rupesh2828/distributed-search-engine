@@ -1,5 +1,5 @@
 import {Queue, QueueScheduler} from 'bullmq';
-import {createClient} from 'redis';
+import {createClient} from 'redis'; 
 
 //redis
 const redisClient = createClient({ url: 'redis://localhost:6379' });
@@ -16,7 +16,7 @@ const redisClient = createClient({ url: 'redis://localhost:6379' });
 
 //URL queue for managing crawling jobs
 
-const urlQueue = new Queue('urlQueue', {
+export const urlQueue = new Queue('urlQueue', {
     connection: {
         client: redisClient,
     },
