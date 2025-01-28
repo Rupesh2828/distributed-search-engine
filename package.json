@@ -24,7 +24,7 @@
   "dependencies": {
     "@prisma/client": "^6.2.1",
     "axios": "^1.7.9",
-    "bullmq": "^5.37.0",
+    "bullmq": "^5.38.0",
     "cheerio": "^1.0.0",
     "concurrently": "^9.1.2",
     "cookie-parser": "^1.4.7",

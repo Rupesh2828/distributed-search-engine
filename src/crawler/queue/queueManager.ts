@@ -1,33 +1,33 @@
-import {Queue, QueueScheduler} from 'bullmq';
-import {createClient} from 'redis'; 
+// queueManager.ts
+import { Queue, QueueEvents } from 'bullmq';
+import { createClient } from 'redis';
 
-//redis
+// Create the Redis client
 const redisClient = createClient({ url: 'redis://localhost:6379' });
 
 (async () => {
-    try {
-        await redisClient.connect();
-        console.log('Connected to Redis');
-    } catch (error) {
-        console.error('Error connecting to Redis:', error);
-        process.exit(1); // Exit the process if Redis connection fails
-    }
+  try {
+    // Connect to Redis
+    await redisClient.connect();
+    console.log('Connected to Redis');
+  } catch (error) {
+    console.error('Error connecting to Redis:', error);
+    process.exit(1); // Exit the process if Redis connection fails
+  }
 })();
 
-//URL queue for managing crawling jobs
-
+// Queue creation: Only pass the connection URL or object
 export const urlQueue = new Queue('urlQueue', {
-    connection: {
-        client: redisClient,
-    },
+  connection: {
+    host: 'localhost',
+    port: 6379,
+  },
 });
 
-
-//Scheduler for urlQueue
+// Events for urlQueue
 try {
-    new QueueScheduler('urlQueue', { connection: { client: redisClient } });
-    console.log('QueueScheduler for urlQueue initialized');
+  new QueueEvents('urlQueue', { connection: { host: 'localhost', port: 6379 } });
+  console.log('QueueEvents for urlQueue initialized');
 } catch (error) {
-    console.error('Error initializing QueueScheduler:', error);
+  console.error('Error initializing QueueEvents:', error);
 }
-
