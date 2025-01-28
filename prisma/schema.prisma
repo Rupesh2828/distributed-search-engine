@@ -27,8 +27,8 @@ model CrawledDocument {
 
 model Link {
   id              Int    @id @default(autoincrement())
-  documentId      Int
+  crawledDocumentId      Int
   url             String
-  crawledDocument CrawledDocument @relation(fields: [documentId], references: [id])
-  @@unique([documentId, url])
+  crawledDocument CrawledDocument @relation(fields: [crawledDocumentId], references: [id])
+  @@unique([crawledDocumentId, url])
 }
