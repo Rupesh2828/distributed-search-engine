@@ -1,11 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
 }
 
 datasource db {
@@ -14,21 +9,21 @@ datasource db {
 }
 
 model CrawledDocument {
-  id          Int      @id @default(autoincrement())
-  url         String   @unique
-  content     String
-  crawlDepth  Int
-  crawlTime   DateTime @default(now())
-  ipAddress   String
-  links       Link[]
- 
+  id               Int       @id @default(autoincrement())
+  url              String    @unique
+  content          String
+  content_tsvector String    // Add the content_tsvector field for full-text search
+  crawlDepth       Int
+  crawlTime        DateTime  @default(now())
+  ipAddress        String
+  links            Link[]
 
 }
 
 model Link {
-  id              Int    @id @default(autoincrement())
-  crawledDocumentId      Int
-  url             String
-  crawledDocument CrawledDocument @relation(fields: [crawledDocumentId], references: [id])
+  id                 Int        @id @default(autoincrement())
+  crawledDocumentId  Int
+  url                String
+  crawledDocument    CrawledDocument @relation(fields: [crawledDocumentId], references: [id])
   @@unique([crawledDocumentId, url])
 }

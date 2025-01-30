@@ -16,8 +16,16 @@ export const saveCrawledDocument = async ({
   links: string[];
 }) => {
   try {
-    const existingDocument = await prisma.crawledDocument.findUnique({
-      where: { url },
+    const existingDocument = await prisma.crawledDocument.findFirst({
+      where: {
+        content: {
+          search: content,
+        },
+      },
+      orderBy: {
+        // Prisma will automatically rank results by relevance
+        content: 'asc',
+      },
     });
 
     if (existingDocument) {
