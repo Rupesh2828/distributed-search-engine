@@ -12,11 +12,13 @@ model CrawledDocument {
   id               Int       @id @default(autoincrement())
   url              String    @unique
   content          String
-  content_tsvector String    // Add the content_tsvector field for full-text search
+  content_tsvector String?    // Add the content_tsvector field for full-text search
   crawlDepth       Int
   crawlTime        DateTime  @default(now())
   ipAddress        String
   links            Link[]
+  invertedIndex  InvertedIndex[]
+  metadata         DocumentMetadata?
 
 }
 
@@ -26,4 +28,20 @@ model Link {
   url                String
   crawledDocument    CrawledDocument @relation(fields: [crawledDocumentId], references: [id])
   @@unique([crawledDocumentId, url])
+}
+
+model InvertedIndex {
+  id           Int    @id @default(autoincrement())
+  token        String
+  docId        Int
+  termFreq     Int    // Term frequency for BM25 calculation
+  document     CrawledDocument @relation(fields: [docId], references: [id])
+  @@unique([token, docId])  // Composite unique index on token and docId
+}
+
+model DocumentMetadata {
+  id           Int    @id @default(autoincrement())
+  docId        Int    @unique
+  length       Int    // Document length for BM25 normalization
+  document     CrawledDocument @relation(fields: [docId], references: [id])
 }

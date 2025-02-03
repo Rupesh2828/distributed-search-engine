@@ -1,64 +1,76 @@
-import fs from 'fs';
-import path from 'path';
-import processText from './tokenizer';
+// indexer.ts
 import { BM25Score } from './ranker';
+import processText from './tokenizer';
+import { createClient } from 'redis';
+import prisma from '../db/connection';
+import { Queue } from 'bullmq';
+import { urlQueue } from '../crawler/queue/queueManager';
 
-interface Index {
-  //Store TF for BM25 algo.
-    [token: string]: { [docId: number]: number };  
-}
+const redis = createClient({ url: 'redis://localhost:6379' });
 
-export const invertedIndex: Index = {};
-let documentStore: { [id: number]: string } = {};
-export const docLengths : { [id: number]: number } = {};
-export let totalDocs = 0;
+redis.on('error', (err) => {
+  console.error('Redis Client Error', err);
+});
 
-function addDocumentToIndex(document: string, id:number): void{
-    const tokens = processText(document);
-    totalDocs++;
-    //stores document length for normalization which is used for BM25 algo
-    docLengths[id] = tokens.length
-
-  tokens.forEach((token) => {
-    if (!invertedIndex[token]) {
-      invertedIndex[token] = {};
-    }
-    invertedIndex[token][id] = (invertedIndex[token][id] || 0) +1;
-  });
-
-  documentStore[id] = document;
-
-}
-
-function searchToken(query: string): number[] {
-  const tokens = processText(query);
-  const resultScores: { [docId: number]: number } = {};
-
-  tokens.forEach((token) => {
-      if (!invertedIndex[token]) return;
-
-      Object.keys(invertedIndex[token]).forEach((docId) => {
-          const id = Number(docId);
-          resultScores[id] = (resultScores[id] || 0) + BM25Score(query, id);
-      });
-  });
-
-  return Object.entries(resultScores)
-      .sort((a, b) => b[1] - a[1])  // sort by BM25 score descending
-      .map(([docId]) => Number(docId));
-}
-
-function saveIndexToFile(): void {
-    const indexPath = path.join(__dirname, "inverted_index.json");
-    fs.writeFileSync(indexPath, JSON.stringify(invertedIndex, null, 2));
+async function connectRedis() {
+  try {
+    await redis.connect();
+  } catch (error) {
+    console.error('Error connecting to Redis:', error);
   }
-  
-//   function loadIndexFromFile(): void {
-//     const indexPath = path.join(__dirname, "inverted_index.json");
-//     if (fs.existsSync(indexPath)) {
-//       const data = fs.readFileSync(indexPath, "utf-8");
-//       invertedIndex = JSON.parse(data);
-//     }
-// }
+}
 
-export { addDocumentToIndex, searchToken, saveIndexToFile };
+connectRedis(); 
+
+
+export const invertedIndex: { [key: string]: { [docId: number]: number } } = {};
+export const docLengths: { [docId: number]: number } = {};
+export let totalDocs: number = 0;
+
+export function processDocument(document: string): string[] {
+  return processText(document);  // Tokenizes the document
+}
+
+export async function updateContentTsvector(document: string, id: number): Promise<void> {
+  try {
+    // Use the Prisma `update` method with the SQL function `to_tsvector` for full-text search
+    await prisma.crawledDocument.update({
+      where: { id },
+      data: {
+        content_tsvector: {
+          // Directly pass the SQL function to update the tsvector field
+          set: (await prisma.$queryRaw<{ to_tsvector: string }[]>`SELECT to_tsvector(${document})`)[0].to_tsvector, // Use the raw SQL function to update the tsvector field
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error updating content_tsvector:', error);
+    throw new Error('Failed to update content_tsvector');
+  }
+}
+
+export function calculateBM25(query: string, docId: number, invertedIndexData: any[]): number {
+  let score = 0;
+  invertedIndexData.forEach((entry) => {
+    const docScore = BM25Score(query, docId);
+    score += docScore;
+  });
+  return score;
+}
+
+export async function getCachedResults(query: string): Promise<number[] | null> {
+  const cachedResults = await redis.get(`search:${query}`);
+  return cachedResults ? JSON.parse(cachedResults) : null;
+}
+
+export async function cacheSearchResults(query: string, results: number[]): Promise<void> {
+  await redis.set(`search:${query}`, JSON.stringify(results), { EX: 3600 }); // Cache for 1 hour
+}
+
+export async function enqueueIndexingTask(document: string, id: number): Promise<void> {
+  try {
+    await urlQueue.add('indexDocument', { document, id });
+  } catch (error) {
+    console.error('Error adding indexing task to queue:', error);
+  }
+}
