@@ -1,22 +1,23 @@
 import fs from 'fs';
 import path from 'path';
 import processText from './tokenizer';
+import { BM25Score } from './ranker';
 
 interface Index {
   //Store TF for BM25 algo.
     [token: string]: { [docId: number]: number };  
 }
 
-let invertedIndex: Index = {};
+export const invertedIndex: Index = {};
 let documentStore: { [id: number]: string } = {};
-let docLenghths : { [id: number]: number } = {};
-let totalDocs = 0;
+export const docLengths : { [id: number]: number } = {};
+export let totalDocs = 0;
 
 function addDocumentToIndex(document: string, id:number): void{
     const tokens = processText(document);
     totalDocs++;
     //stores document length for normalization which is used for BM25 algo
-    docLenghths[id] = tokens.length
+    docLengths[id] = tokens.length
 
   tokens.forEach((token) => {
     if (!invertedIndex[token]) {
@@ -38,7 +39,7 @@ function searchToken(query: string): number[] {
 
       Object.keys(invertedIndex[token]).forEach((docId) => {
           const id = Number(docId);
-          resultScores[id] = (resultScores[id] || 0) + bm25Score(query, id);
+          resultScores[id] = (resultScores[id] || 0) + BM25Score(query, id);
       });
   });
 
