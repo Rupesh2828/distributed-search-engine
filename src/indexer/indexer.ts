@@ -3,21 +3,26 @@ import path from 'path';
 import processText from './tokenizer';
 
 interface Index {
-    [token: string]: Set<number>;
+  //Store TF for BM25 algo.
+    [token: string]: { [docId: number]: number };  
 }
 
 let invertedIndex: Index = {};
-
 let documentStore: { [id: number]: string } = {};
+let docLenghths : { [id: number]: number } = {};
+let totalDocs = 0;
 
 function addDocumentToIndex(document: string, id:number): void{
     const tokens = processText(document);
+    totalDocs++;
+    //stores document length for normalization which is used for BM25 algo
+    docLenghths[id] = tokens.length
 
   tokens.forEach((token) => {
     if (!invertedIndex[token]) {
-      invertedIndex[token] = new Set();
+      invertedIndex[token] = {};
     }
-    invertedIndex[token].add(id); 
+    invertedIndex[token][id] = (invertedIndex[token][id] || 0) +1;
   });
 
   documentStore[id] = document;
@@ -25,18 +30,21 @@ function addDocumentToIndex(document: string, id:number): void{
 }
 
 function searchToken(query: string): number[] {
-    const tokens = processText(query);
-    const result = new Set<number>();
+  const tokens = processText(query);
+  const resultScores: { [docId: number]: number } = {};
 
-//for each token in the query, retrieve documents containing it
   tokens.forEach((token) => {
-    const docIds = invertedIndex[token];
-    if (docIds) {
-      docIds.forEach((id) => result.add(id));
-    }
+      if (!invertedIndex[token]) return;
+
+      Object.keys(invertedIndex[token]).forEach((docId) => {
+          const id = Number(docId);
+          resultScores[id] = (resultScores[id] || 0) + bm25Score(query, id);
+      });
   });
 
-  return Array.from(result);
+  return Object.entries(resultScores)
+      .sort((a, b) => b[1] - a[1])  // sort by BM25 score descending
+      .map(([docId]) => Number(docId));
 }
 
 function saveIndexToFile(): void {
