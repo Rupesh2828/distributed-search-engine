@@ -1,34 +1,31 @@
-import prisma from '../db/connection'; // Prisma ORM for PostgreSQL
+import { Request, Response } from "express";
+import prisma from "../db/connection";
 import { 
   processDocument, 
   updateContentTsvector, 
   calculateBM25, 
   getCachedResults, 
   cacheSearchResults 
-} from '../indexer/indexer'; // Import indexing logic
+} from "../indexer/indexer"; 
 
-// Add a document to the index (Create)
-export const addDocument = async (document: string, id: number) => {
-  const transaction = await prisma.$transaction([
-    prisma.documentMetadata.upsert({
-      where: { docId: id },
-      update: { length: document.split(' ').length },
-      create: { docId: id, length: document.split(' ').length },
-    }),
-  ]);
-  
+// Add a document to the index
+export const addDocument = async (req: Request, res: Response): Promise<void> => {
   try {
+    const { document, id } = req.body;
+
+    if (!document || typeof document !== "string" || !id || typeof id !== "number") {
+       res.status(400).json({ error: "Invalid request. 'document' must be a string and 'id' must be a number." });
+    }
+
     const tokens = processDocument(document);
     const docLength = tokens.length;
 
-    // Insert or update document metadata
     await prisma.documentMetadata.upsert({
       where: { docId: id },
       update: { length: docLength },
       create: { docId: id, length: docLength },
     });
 
-    // Insert tokens into the inverted index
     for (const token of tokens) {
       await prisma.invertedIndex.upsert({
         where: { token_docId: { token, docId: id } },
@@ -37,35 +34,36 @@ export const addDocument = async (document: string, id: number) => {
       });
     }
 
-    // Update content_tsvector field
     await updateContentTsvector(document, id);
 
-    return { message: 'Document added successfully to the index.' };
+     res.status(201).json({ message: "Document added successfully to the index." });
   } catch (error) {
-    console.error('Error adding document to index:', error);
-    throw new Error('Failed to add document to index.');
+    console.error("Error adding document:", error);
+       res.status(500).json({ error: "Failed to add document to the index." });
   }
 };
 
-// Update an existing document in the index
-export const updateDocument = async (document: string, id: number) => {
+// Update an existing document
+export const updateDocument = async (req: Request, res: Response) => {
   try {
+    const { document, id } = req.body;
+
+    if (!document || typeof document !== "string" || !id || typeof id !== "number") {
+      return res.status(400).json({ error: "Invalid request. 'document' must be a string and 'id' must be a number." });
+    }
+
     const tokens = processDocument(document);
     const docLength = tokens.length;
 
-    // Update document metadata (length)
     await prisma.documentMetadata.upsert({
       where: { docId: id },
       update: { length: docLength },
       create: { docId: id, length: docLength },
     });
 
-    // Delete existing inverted index entries for the document
-    await prisma.invertedIndex.deleteMany({
-      where: { docId: id },
-    });
+    //deleting prevs tokens with doc from inverted index cause since the doc is updated, old tokens are not relevant.
+    await prisma.invertedIndex.deleteMany({ where: { docId: id } });
 
-    // Insert updated tokens into the inverted index
     for (const token of tokens) {
       await prisma.invertedIndex.upsert({
         where: { token_docId: { token, docId: id } },
@@ -74,48 +72,46 @@ export const updateDocument = async (document: string, id: number) => {
       });
     }
 
-    // Update content_tsvector field
     await updateContentTsvector(document, id);
 
-    return { message: 'Document updated successfully in the index.' };
+    return res.status(200).json({ message: "Document updated successfully." });
   } catch (error) {
-    console.error('Error updating document in index:', error);
-    throw new Error('Failed to update document in index.');
+    console.error("Error updating document:", error);
+    return res.status(500).json({ error: "Failed to update document." });
   }
 };
 
-// Delete a document from the index
-export const deleteDocument = async (id: number) => {
+// Delete a document
+export const deleteDocument = async (req: Request, res: Response) => {
   try {
-    // Delete from inverted index
-    await prisma.invertedIndex.deleteMany({
-      where: { docId: id },
-    });
-    
-    // Delete document metadata
-    await prisma.documentMetadata.delete({
-      where: { docId: id },
-    });
+    const { id } = req.body;
 
-    // Delete the document itself
-    await prisma.crawledDocument.delete({
-      where: { id },
-    });
+    if (!id || typeof id !== "number") {
+      return res.status(400).json({ error: "Invalid request. 'id' must be a number." });
+    }
 
-    return { message: 'Document deleted successfully from the index.' };
+    await prisma.invertedIndex.deleteMany({ where: { docId: id } });
+    await prisma.documentMetadata.delete({ where: { docId: id } });
+    await prisma.crawledDocument.delete({ where: { id } });
+
+    return res.status(200).json({ message: "Document deleted successfully." });
   } catch (error) {
-    console.error('Error deleting document from index:', error);
-    throw new Error('Failed to delete document from index.');
+    console.error("Error deleting document:", error);
+    return res.status(500).json({ error: "Failed to delete document." });
   }
 };
 
-// Search for documents in the index
-export const searchDocuments = async (query: string) => {
+export const searchDocuments = async (req: Request, res: Response) => {
   try {
-    // Check for cached search results first
+    const { query } = req.body;
+
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "Invalid request. 'query' must be a string." });
+    }
+
     const cachedResults = await getCachedResults(query);
     if (cachedResults) {
-      return { results: cachedResults };
+      return res.status(200).json({ results: cachedResults });
     }
 
     const tokens = processDocument(query);
@@ -134,15 +130,14 @@ export const searchDocuments = async (query: string) => {
     }
 
     const sortedResults = Object.entries(resultScores)
-      .sort((a, b) => b[1] - a[1]) // Sort by BM25 score
+      .sort((a, b) => b[1] - a[1])
       .map(([docId]) => Number(docId));
 
-    // Cache the results for future use
     await cacheSearchResults(query, sortedResults);
 
-    return { results: sortedResults };
+    return res.status(200).json({ results: sortedResults });
   } catch (error) {
-    console.error('Error searching documents:', error);
-    throw new Error('Failed to search documents.');
+    console.error("Error searching documents:", error);
+    return res.status(500).json({ error: "Failed to search documents." });
   }
 };
