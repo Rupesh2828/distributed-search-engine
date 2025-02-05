@@ -1,42 +1,57 @@
-import { invertedIndex, docLengths, totalDocs } from './indexer'; 
-import processText from './tokenizer';
+import prisma from "../db/connection";
+import processText from "./tokenizer";
 
-const controlledTermFrequency = 1.5;  
-const controlledLengthNormalization = 0.75;  
+const controlledTermFrequency = 1.5;
+const controlledLengthNormalization = 0.75;
 
 // Function to calculate Inverse Document Frequency (IDF)
-function idf(term: string): number {
-    const df = Object.keys(invertedIndex[term] || {}).length;
-    return Math.log(
-        //IDF formula: log( (N - df + 0.5) / (df + 0.5) + 1 ), where N = totalDocs  
-        ((totalDocs - df + 0.5) / (df + 0.5)) + 1.0
-    );
+async function idf(term: string): Promise<number> {
+  const totalDocs = await prisma.documentMetadata.count(); // Get total number of documents
+
+  const df = await prisma.invertedIndex.count({
+    where: { token: term }, // Get document frequency for the term
+  });
+
+  return Math.log(((totalDocs - df + 0.5) / (df + 0.5)) + 1.0);
 }
 
 // Function to calculate BM25 score for a query and document
-export function BM25Score(query: string, docId: number): number {
+export async function BM25Score(query: string, docId: number): Promise<number> {
+  const tokens = processText(query);
+  let score = 0;
 
-    const tokens = processText(query);
-    let score = 0;
+  const docData = await prisma.documentMetadata.findUnique({
+    where: { docId },
+    select: { length: true },
+  });
 
-    
-    tokens.forEach((token) => {
-        if (!invertedIndex[token]) return;  // return if token isn't in the index
+  if (!docData) return 0; // Document doesn't exist
 
-        //retrieves term frequency of token in doc, if not then set tf to 0
-        const tf = invertedIndex[token][docId] || 0;
+  const docLength = docData.length;
 
-        const docLength = docLengths[docId] || 0;
+  const avgDocLength = await prisma.documentMetadata.aggregate({
+    _avg: { length: true },
+  });
 
-        const averageDocumentLength = Object.values(docLengths).reduce((sum, length) => sum + length, 0) / totalDocs;
+  const averageDocumentLength = avgDocLength._avg.length || 1; // Avoid division by zero
 
-        // BM25 formula for this token in the document
-        const termScore = idf(token) * (tf * (controlledTermFrequency + 1)) 
-        / (tf + controlledTermFrequency * (1 - controlledLengthNormalization + controlledLengthNormalization * docLength / averageDocumentLength));
-
-        
-        score += termScore;
+  for (const token of tokens) {
+    const termData = await prisma.invertedIndex.findUnique({
+      where: { token_docId: { token, docId } },
+      select: { termFreq: true },
     });
 
-    return score;
+    const tf = termData?.termFreq || 0; // Term frequency in the document
+
+    const termIDF = await idf(token); // Compute IDF
+
+    // Compute BM25 score for this token
+    const termScore =
+      (termIDF * tf * (controlledTermFrequency + 1)) /
+      (tf + controlledTermFrequency * (1 - controlledLengthNormalization + controlledLengthNormalization * (docLength / averageDocumentLength)));
+
+    score += termScore;
+  }
+
+  return score;
 }

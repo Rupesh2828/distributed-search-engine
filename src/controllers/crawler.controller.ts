@@ -83,3 +83,17 @@ export const storeCrawledDocument = async (req: Request, res: Response): Promise
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+// check if a URL has already been crawled
+export const isUrlCrawled = async (url: string): Promise<boolean> => {
+  try {
+    const existingDocument = await prisma.crawledDocument.findUnique({
+      where: { url },
+    });
+
+    return existingDocument !== null;
+  } catch (error) {
+    console.error(`Error checking URL: ${url}`, error);
+    return false;
+  }
+};
