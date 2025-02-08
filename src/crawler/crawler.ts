@@ -3,7 +3,7 @@ import { Worker } from "bullmq";
 import cheerio from "cheerio";
 import { urlQueue } from "./queue/queueManager";
 import { resolveDNS } from "./dnsResolver";
-import { saveCrawledDocument, isUrlCrawled } from "../controllers/crawler.controller";
+import { storeOrUpdateDocument, isUrlCrawled } from "../controllers/crawler.controller";
 import { scheduleCrawl } from "./scheduler";
 
 const MAX_DEPTH = 3; // Prevent infinite crawling
@@ -70,7 +70,7 @@ const worker = new Worker("urlQueue", async (job) => {
     const ipAddress = await resolveDNS(url);
 
     // Save the crawled document in the database
-    const createdDocument = await saveCrawledDocument({
+    const createdDocument = await storeOrUpdateDocument({
       url,
       content: html,
       crawlDepth: depth,
