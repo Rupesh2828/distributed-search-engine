@@ -20,40 +20,59 @@ async function connectRedis() {
 
 connectRedis();
 
-// 🔹 Automate indexing when a document is added/updated
-export async function processDocument(document: string, id: number): Promise<string[]> {  // Update return type to `string[]`
+//automate indexing when a document is added/updated
+export async function processDocument(document: string, id: number): Promise<string[]> {  
   try {
-    const tokens = processText(document);  // Tokenize the document
-    const docLength = tokens.length;
+    let retries = 5;
+    let existingDocument = null;
 
-    await prisma.documentMetadata.upsert({
-      where: { docId: id },
-      update: { length: docLength },
-      create: { docId: id, length: docLength },
-    });
-
-    await prisma.invertedIndex.deleteMany({ where: { docId: id } });
-
-    // Insert tokens into inverted index
-    for (const token of tokens) {
-      await prisma.invertedIndex.upsert({
-        where: { token_docId: { token, docId: id } },
-        update: { termFreq: { increment: 1 } },
-        create: { token, docId: id, termFreq: 1 },
+    while (retries > 0) {
+      existingDocument = await prisma.crawledDocument.findUnique({
+        where: { id },
       });
+
+      if (existingDocument) break; 
+      console.log(`⚠️ Document with id ${id} not found. Retrying in 500ms...`);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      retries--;
     }
 
-    await updateContentTsvector(document, id);  // Update content tsvector
+    if (!existingDocument) {
+      throw new Error(`Document with id ${id} still not found in CrawledDocument.`);
+    }
 
-    // Enqueue the indexing task
-    await enqueueIndexingTask(document, id);
+    const tokens = processText(document);
+    const docLength = tokens.length;
 
-    return tokens;  // Return the tokens
+    await prisma.$transaction(async (tx) => {
+      await tx.documentMetadata.upsert({
+        where: { docId: id },
+        update: { length: docLength },
+        create: { docId: id, length: docLength },
+      });
+
+      await tx.invertedIndex.deleteMany({ where: { docId: id } });
+
+      await Promise.all(
+        tokens.map((token) =>
+          tx.invertedIndex.upsert({
+            where: { token_docId: { token, docId: id } },
+            update: { termFreq: { increment: 1 } },
+            create: { token, docId: id, termFreq: 1 },
+          })
+        )
+      );
+    });
+
+    await updateContentTsvector(document, id);
+
+    return tokens;
   } catch (error) {
-    console.error("Error processing and indexing document:", error);
+    console.error("Error processing document:", error);
     throw new Error("Error processing and indexing document.");
   }
 }
+
 
 // 🔹 Automate content update for full-text search
 export async function updateContentTsvector(document: string, id: number): Promise<void> {

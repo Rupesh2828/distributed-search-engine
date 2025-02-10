@@ -12,11 +12,12 @@ model CrawledDocument {
   id               Int               @id @default(autoincrement())
   url              String            @unique
   content          String
+  contentHash      String?           @unique
   content_tsvector String? // Add the content_tsvector field for full-text search
   crawlDepth       Int
   crawlTime        DateTime          @default(now())
   ipAddress        String
-  processed   Boolean  @default(false)
+  processed        Boolean           @default(false)
   links            Link[]
   invertedIndex    InvertedIndex[]
   metadata         DocumentMetadata?

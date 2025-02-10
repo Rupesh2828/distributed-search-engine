@@ -23,11 +23,11 @@ app.use(cookieParser());
 
 // Import routes
 import crawlerRoutes from "./routes/crawler.route";
-import indexRoutes from "./routes/index.route";
+// import indexRoutes from "./routes/index.route";
 
 // Routes
 app.use("/api/v1/crawl", crawlerRoutes);
-app.use("/api/v1/index", indexRoutes);
+// app.use("/api/v1/index", indexRoutes);
 
 
 async function bootServer() {
