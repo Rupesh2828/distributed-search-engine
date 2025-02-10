@@ -81,7 +81,6 @@ export const deleteDocument = async (req: Request, res: Response):Promise<void> 
        res.status(400).json({ error: "Invalid request. 'id' must be a number." });
     }
 
-    // Delete tokens, metadata, and crawled document
     await prisma.invertedIndex.deleteMany({ where: { docId: id } });
     await prisma.documentMetadata.delete({ where: { docId: id } });
     await prisma.crawledDocument.delete({ where: { id } });

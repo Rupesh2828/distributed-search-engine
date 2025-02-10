@@ -2,11 +2,9 @@ import { Request, Response } from "express";
 import prisma from "../db/connection";
 import { processDocument, updateContentTsvector } from "../indexer/indexer";
 
-// Save or update a crawled document in the database
 export const storeOrUpdateDocument = async (documentData: any) => {
   try {
     return await prisma.$transaction(async (tx) => {
-      // Destructure fields from documentData
       const { url, content, crawlDepth, ipAddress, links } = documentData;
 
       // Check if the document already exists
@@ -85,7 +83,6 @@ export const storeCrawledDocument = async (req: Request, res: Response): Promise
   }
 };
 
-// Check if a URL has already been crawled
 export const isUrlCrawled = async (url: string): Promise<boolean> => {
   try {
     const count = await prisma.crawledDocument.count({ where: { url } });
