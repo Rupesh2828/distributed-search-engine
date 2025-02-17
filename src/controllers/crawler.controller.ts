@@ -38,7 +38,7 @@ export const storeOrUpdateDocument = async (documentData: any) => {
       });
     });
 
-    // If the document already exists, return it immediately
+    //If the document already exists, return it immediately
     if ("message" in result) {
       return result;
     }
