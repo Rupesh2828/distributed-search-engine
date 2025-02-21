@@ -11,7 +11,6 @@ import { BloomFilterCache } from "../utils/filter";
 const MAX_DEPTH = 3; // Prevent infinite crawling
 const CRAWL_DELAY_MS = 5000; // Politeness delay (5 sec)
 const MAX_RETRIES = 3; // Retry on failure
-const SEED_URLS = ["https://example.com", "https://another-site.com"];
 
 // 🔹 Helper function to fetch HTML content with retries
 const fetchHTML = async (url: string, retries = MAX_RETRIES): Promise<string> => {
@@ -65,10 +64,12 @@ const worker = new Worker("urlQueue", async (job) => {
 
     // 🔹 Fetch HTML content
     const html = await fetchHTML(url);
+    console.log("Fetched HTML for URL:", url);
     if (!html) return;
 
     //extract and prioritize links
     const links = await extractLinks(html, url);
+    console.log("Extracted links:", links);
 
     const ipAddress = await resolveDNS(url);
 
@@ -97,7 +98,14 @@ const worker = new Worker("urlQueue", async (job) => {
 
 //enqueues initial seed URLs
 const enqueueSeedUrls = async () => {
-  for (const url of SEED_URLS) {
+
+  const starterSites = [
+    "https://www.wikipedia.org/",
+    "https://www.bbc.com/",
+    "https://edition.cnn.com/"
+  ];
+
+  for (const url of starterSites) {
     const priority = computeUrlPriority(url);
     await urlQueue.add("crawlJob", { url, depth: 0 }, { priority });
   }

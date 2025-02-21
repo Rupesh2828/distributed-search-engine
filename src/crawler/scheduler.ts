@@ -20,16 +20,24 @@ export const scheduleCrawl = () => {
         return;
       }
 
-      for (const { id, url } of uncrawledUrls) {
-        await urlQueue.add("crawlJob", { url, depth: 1, strategy: "BFS" });
-        console.log(`🕷️ Scheduled URL for crawling: ${url}`);
+      // Process uncrawled URLs concurrently with async promises
+      const crawlPromises = uncrawledUrls.map(async ({ id, url }) => {
+        try {
+          await urlQueue.add("crawlJob", { url, depth: 1, strategy: "BFS" });
+          console.log(`🕷️ Scheduled URL for crawling: ${url}`);
 
-        // ✅ Mark the URL as `processed: true` immediately to prevent duplicate scheduling
-        await prisma.crawledDocument.update({
-          where: { id },
-          data: { processed: true },
-        });
-      }
+          // Mark the URL as `processed: true` immediately to prevent duplicate scheduling
+          await prisma.crawledDocument.update({
+            where: { id },
+            data: { processed: true },
+          });
+        } catch (error) {
+          console.error(`❌ Error processing URL ${url}:`, error);
+          // Optional: You could add retry logic here for failed URLs
+        }
+      });
+
+      await Promise.all(crawlPromises);
     } catch (error) {
       console.error("❌ Error scheduling crawling:", error);
     }
