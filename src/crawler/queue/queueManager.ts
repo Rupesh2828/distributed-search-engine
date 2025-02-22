@@ -23,6 +23,7 @@ const redisConnection = {
 
 export const urlQueue = new Queue('urlQueue', { connection: redisConnection });
 
+
 try {
   new QueueEvents('urlQueue', { connection: redisConnection });
   console.log('QueueEvents for urlQueue initialized');
