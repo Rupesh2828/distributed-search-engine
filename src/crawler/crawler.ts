@@ -9,7 +9,7 @@ import { computeUrlPriority } from "../utils/priority";
 import { BloomFilterCache } from "../utils/filter";
 
 interface SearchApiResponse {
-  results: { url: string }[]; //Adjust this based on the actual response structure
+  results: { url: string }[]; // Adjust this based on the actual response structure
 }
 
 const MAX_DEPTH = 3; // Prevent infinite crawling
@@ -22,8 +22,10 @@ const fetchHTML = async (url: string, retries = MAX_RETRIES): Promise<string> =>
     console.log(`Crawler is making a request to: ${url}`);
     const response = await axios.get(url, { timeout: 10000 });
     console.log(`Successfully fetched data from: ${url}`);
+
     return response.data;
   } catch (error) {
+
     if (retries > 0) {
       console.warn(`Retrying (${MAX_RETRIES - retries + 1}) - Failed to fetch: ${url}`);
       return fetchHTML(url, retries - 1);
@@ -33,7 +35,7 @@ const fetchHTML = async (url: string, retries = MAX_RETRIES): Promise<string> =>
   }
 };
 
-//Extract links and return an array (does NOT queue URLs here)
+// Extract links and return an array (does NOT queue URLs here)
 const extractLinks = async (html: string, baseUrl: string): Promise<{ url: string; priority: number }[]> => {
   const $ = cheerio.load(html);
   const linksWithPriority: { url: string; priority: number }[] = [];
@@ -55,7 +57,6 @@ const extractLinks = async (html: string, baseUrl: string): Promise<{ url: strin
     }
   } catch (error) {
     // If it's not JSON, fallback to parsing HTML with cheerio
-    const $ = cheerio.load(html);
     $("a").each((_, element) => {
       const href = $(element).attr("href");
       if (href) {
@@ -70,17 +71,17 @@ const extractLinks = async (html: string, baseUrl: string): Promise<{ url: strin
     });
   }
 
-  //for higher priority
+  // For higher priority
   return linksWithPriority.sort((a, b) => b.priority - a.priority);
 };
 
-// 🔹 Worker for processing URLs
+//Worker for processing URLs
 const worker = new Worker("urlQueue", async (job) => {
-  console.log(`Worker received job: ${job.id}`);  
+  console.log(`Worker received job: ${job.id}`);
   const { url, depth } = job.data;
-  console.log("Worker processing job:", job.data.url)
+  console.log("Worker processing job:", job.data.url);
 
-  if (depth > MAX_DEPTH) return; 
+  if (depth > MAX_DEPTH) return;
   console.log(`Processing URL: ${url} (Depth: ${depth})`);
 
   try {
@@ -94,7 +95,7 @@ const worker = new Worker("urlQueue", async (job) => {
     console.log("Fetched HTML for URL:", url);
     if (!html) return;
 
-    //extract and prioritize links
+    // Extract and prioritize links
     const links = await extractLinks(html, url);
     console.log("Extracted links:", links);
 
@@ -105,16 +106,16 @@ const worker = new Worker("urlQueue", async (job) => {
       content: html,
       crawlDepth: depth,
       ipAddress,
-      links: links.map(linkObj => linkObj.url), 
+      links: links.map(linkObj => linkObj.url),
     });
 
     if (createdDocument) {
-      BloomFilterCache.add(url); 
+      BloomFilterCache.add(url);
       for (const { url: link, priority } of links) {
         await urlQueue.add(
           "crawlJob",
           { url: link, depth: depth + 1 },
-          { delay: CRAWL_DELAY_MS, priority } 
+          { delay: CRAWL_DELAY_MS, priority }
         );
       }
     }
@@ -123,9 +124,8 @@ const worker = new Worker("urlQueue", async (job) => {
   }
 });
 
-//enqueues initial seed URLs
+// Enqueues initial seed URLs
 const enqueueSeedUrls = async () => {
-
   const starterSites = [
     "https://www.wikipedia.org/",
     "https://www.bbc.com/",
@@ -142,7 +142,7 @@ const enqueueSeedUrls = async () => {
 const startCrawling = async () => {
   console.log("Starting automated crawler...");
   await enqueueSeedUrls();
-  scheduleCrawl(); 
+  scheduleCrawl();
 };
 
 startCrawling();

@@ -43,11 +43,11 @@ export async function processDocument(document: string, id: number): Promise<str
       console.log(`Document with id ${id} not found. Retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       retries--;
-      delay *= 2;  // Exponentially back off
+      delay *= 2;  // Exponential backoff
     }
 
     if (!existingDocument) {
-      throw new Error(`Document with id ${id} still not found in CrawledDocument after retries.`);
+      throw new Error(`Document with id ${id} still not found after ${5 - retries} retries.`);
     }
 
     const tokens = processText(document);
@@ -66,15 +66,15 @@ export async function processDocument(document: string, id: number): Promise<str
       await tx.invertedIndex.deleteMany({ where: { docId: id } });
 
       // Insert new inverted index entries
-      await Promise.all(
-        tokens.map((token) =>
-          tx.invertedIndex.upsert({
-            where: { token_docId: { token, docId: id } },
-            update: { termFreq: { increment: 1 } },
-            create: { token, docId: id, termFreq: 1 },
-          })
-        )
+      const invertedIndexPromises = tokens.map((token) =>
+        tx.invertedIndex.upsert({
+          where: { token_docId: { token, docId: id } },
+          update: { termFreq: { increment: 1 } },
+          create: { token, docId: id, termFreq: 1 },
+        })
       );
+
+      await Promise.all(invertedIndexPromises);
     });
 
     // Update the content tsvector for full-text search
@@ -90,18 +90,24 @@ export async function processDocument(document: string, id: number): Promise<str
 // Automate content update for full-text search
 export async function updateContentTsvector(document: string, id: number): Promise<void> {
   try {
-    await prisma.crawledDocument.update({
-      where: { id },
-      data: {
-        content_tsvector: {
-          set: (
-            await prisma.$queryRaw<{ to_tsvector: string }[]>`
-              SELECT to_tsvector(${document})
-            ` // Assuming document content is a string
-          )[0].to_tsvector,
+    // Execute raw query to get the tsvector
+    const result = await prisma.$queryRaw<{ to_tsvector: string }[]>`
+      SELECT to_tsvector(${document})
+    `;
+
+    // Extract the to_tsvector value from the first row of the result
+    const toTsvector = result[0]?.to_tsvector;
+
+    if (toTsvector) {
+      await prisma.crawledDocument.update({
+        where: { id },
+        data: {
+          content_tsvector: toTsvector,
         },
-      },
-    });
+      });
+    } else {
+      console.error("Failed to generate tsvector for the document.");
+    }
   } catch (error) {
     console.error("Error updating content_tsvector:", error);
   }
@@ -122,12 +128,18 @@ export async function getCachedResults(query: string): Promise<number[] | null> 
 // Cache search results for a query
 export async function cacheSearchResults(query: string, results: { url: string; content: string }[]): Promise<void> {
   await connectRedis();
-  await redis.set(`search:${query}`, JSON.stringify(results), { EX: 3600 });
+  const cacheTTL = 3600; // 1 hour
+  await redis.set(`search:${query}`, JSON.stringify(results), { EX: cacheTTL });
 }
 
 // Automate indexing by enqueueing a task for document processing
 export async function enqueueIndexingTask(document: string, id: number): Promise<void> {
   try {
+    const existingTask = await urlQueue.getJob(id.toString());
+    if (existingTask) {
+      console.log(`Document with id ${id} is already in the queue.`);
+      return;
+    }
     await urlQueue.add("indexDocument", { document, id });
   } catch (error) {
     console.error("Error adding indexing task to queue:", error);
