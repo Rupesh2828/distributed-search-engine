@@ -7,8 +7,13 @@ const router = Router();
 // Modified route to handle async errors and send response correctly
 router.post("/store-document", validateCreateDocument, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await storeDocument(req.body); // assuming you send documentData in the request body
-    res.status(200).json(result); // Sending the successful response
+    console.log("Received request body:", req.body); // Debug log
+
+    const documentData = req.body; // Get data from Postman
+    const result = await storeDocument(documentData); // Call the function
+
+    res.status(200).json(result);
+    
   } catch (error) {
     next(error); // Passing errors to the next middleware (error handler)
   }
