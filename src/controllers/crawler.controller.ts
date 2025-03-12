@@ -27,15 +27,13 @@ export const storeDocument = async (documentData: DocumentData) => {
       throw new Error("Missing or invalid required fields.");
     }
 
+    const contentHash = crypto.createHash("sha256").update(content).digest("hex");
     const existingDoc = await prisma.crawledDocument.findUnique({ where: { url } });
+
     if (existingDoc) {
       console.log(`Exact duplicate detected: ${url}`);
       return { message: "Document already exists", existingDocument: existingDoc };
     }
-
-    // Store new document only if fetched by the crawler
-    const contentHash = crypto.createHash("sha256").update(content).digest("hex");
-    console.log(`Attempting to store document for: ${url}`);
 
     const newDoc = await prisma.crawledDocument.create({
       data: {
@@ -50,81 +48,74 @@ export const storeDocument = async (documentData: DocumentData) => {
 
     console.log(`Stored document successfully: ${newDoc.url}`);
     return { message: "Document added successfully", storedDoc: newDoc };
-
-
   } catch (error) {
     console.error(`Error storing document:`, error);
     throw new Error("Failed to store document.");
   }
 };
 
-// 🔹 Check if URL is Crawled
-export const isUrlCrawled = async (url: string): Promise<boolean> => {
-  try {
-    const count = await prisma.crawledDocument.count({ where: { url } });
-    return count > 0;
-  } catch (error) {
-    console.error(`Error checking if URL is crawled: ${url}`, error);
-    throw new Error("Failed to check URL status.");
-  }
-};
-
 export const searchDocuments = async (req: Request, res: Response): Promise<void> => {
-   try {
-    const  query  = req.query.q as string;
+  try {
+    const query = req.query.q as string;
     if (!query || typeof query !== "string") {
-       res.status(400).json({ error: "Query is required" });
+      res.status(400).json({ error: "Query is required" });
+      return;
     }
 
     console.log(`User searched: ${query}`);
 
-    // Step 1: Check Cache
     const cachedResults = await getCachedResults(query);
     if (cachedResults) {
-      console.log("Returning cached results");
-       res.json({ results: cachedResults });
+      console.log("Returning cached results:", cachedResults);
+      res.json({ results: cachedResults });
+      return;
     }
 
-    // Step 2: Search in Database
     const existingResults = await prisma.crawledDocument.findMany({
       where: {
         content: {
-          contains: query, // Search in stored documents
+          contains: query,
         },
       },
     });
 
+    console.log("Found documents in DB:", existingResults);
     if (existingResults.length > 0) {
       console.log("Returning results from DB");
       await cacheSearchResults(query, existingResults); // Cache results
-       res.json({ results: existingResults });
+      res.json({ results: existingResults });
+      return;
     }
 
-    // Step 3: If not found, trigger the Crawler
     console.log("No results found. Triggering crawler...");
-    
     const crawlResults = await startCrawling(query); // Crawler fetches data
     if (!Array.isArray(crawlResults)) {
       throw new Error("Crawler did not return an array of results.");
     }
 
-    // Step 4: Store New Crawled Data
+    console.log("Crawl results:", crawlResults);
     if (crawlResults && crawlResults.length > 0) {
       const storedDocs: { url: string; content: string }[] = [];
-
       for (const doc of crawlResults) {
-        const storedDoc = await storeDocument(doc); // Store each document
-        if (storedDoc.storedDoc) {
-          storedDocs.push({ url: storedDoc.storedDoc.url, content: storedDoc.storedDoc.content });
+        const exists = await isUrlCrawled(doc.url); 
+        if (!exists) {
+          const storedDoc = await storeDocument(doc); 
+          if (storedDoc.storedDoc) {
+            storedDocs.push({ url: storedDoc.storedDoc.url, content: storedDoc.storedDoc.content });
+          }
+        } else {
+          const existingDoc = await prisma.crawledDocument.findUnique({ where: { url: doc.url } });
+          if (existingDoc) {
+            storedDocs.push({ url: existingDoc.url, content: existingDoc.content });
+          }
         }
       }
-
-      await cacheSearchResults(query, storedDocs); // Cache new results
-       res.json({ results: storedDocs });
+      await cacheSearchResults(query, storedDocs); 
+      res.json({ results: storedDocs });
+      return;
     }
 
-     res.json({ results: [], message: "No relevant pages found." });
-     
+    res.json({ results: [], message: "No relevant pages found." });
   } catch (error) {
     console.error("Error in search API:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -132,20 +123,12 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
 };
 
 
-
-// 🔹 Delete a Document
-export const deleteDocument = async (req: Request, res: Response): Promise<void> => {
+export const isUrlCrawled = async (url: string): Promise<boolean> => {
   try {
-    const { id } = req.body;
-    if (!id || typeof id !== "number") {
-      res.status(400).json({ error: "Invalid request. 'id' must be a number." });
-      return;
-    }
-
-    await prisma.crawledDocument.delete({ where: { id } });
-    res.status(200).json({ message: "Document deleted successfully." });
+    const count = await prisma.crawledDocument.count({ where: { url } });
+    return count > 0;
   } catch (error) {
-    console.error("Error deleting document:", error);
-    res.status(500).json({ error: "Failed to delete document." });
+    console.error(`Error checking if URL is crawled: ${url}`, error);
+    throw new Error("Failed to check URL status.");
   }
 };

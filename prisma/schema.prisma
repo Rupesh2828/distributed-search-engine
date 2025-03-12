@@ -11,9 +11,9 @@ datasource db {
 model CrawledDocument {
   id               Int               @id @default(autoincrement())
   url              String            @unique
+  title            String?
   content          String
   contentHash      String?           @unique
-  content_tsvector String? // Add the content_tsvector field for full-text search
   crawlDepth       Int
   crawlTime        DateTime          @default(now())
   ipAddress        String
