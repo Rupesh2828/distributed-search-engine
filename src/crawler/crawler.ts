@@ -15,7 +15,7 @@ interface DocumentData {
 
 const MAX_DEPTH = 2;
 const MAX_LINKS = 10;
-const USER_AGENT = "YourCrawlerBot"; // Change this to your bot name
+const USER_AGENT = "YourCrawlerBot"; 
 
 //robots.txt compliance
 const checkRobotsTxt = async (url: string): Promise<boolean> => {
