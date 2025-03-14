@@ -15,9 +15,8 @@ interface DocumentData {
 
 const MAX_DEPTH = 2;
 const MAX_LINKS = 10;
-const USER_AGENT = "YourCrawlerBot"; 
+const USER_AGENT = "dse-bot"; 
 
-//robots.txt compliance
 const checkRobotsTxt = async (url: string): Promise<boolean> => {
   try {
     const { origin } = new URL(url);

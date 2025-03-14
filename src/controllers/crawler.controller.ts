@@ -19,7 +19,7 @@ interface DocumentData {
 }
 
 export const storeDocument = async (documentData: DocumentData) => {
-  console.log("storeDocument called with:", documentData);
+  console.log("storeDocument called with:", documentData.url);
   try {
     const { url, content, crawlDepth, ipAddress, links } = documentData;
 
@@ -28,13 +28,23 @@ export const storeDocument = async (documentData: DocumentData) => {
     }
 
     const contentHash = crypto.createHash("sha256").update(content).digest("hex");
-    const existingDoc = await prisma.crawledDocument.findUnique({ where: { url } });
+    
+    // Check if document with this URL or content hash already exists
+    const existingDoc = await prisma.crawledDocument.findFirst({
+      where: {
+        OR: [
+          { url },
+          { contentHash }
+        ]
+      }
+    });
 
     if (existingDoc) {
-      console.log(`Exact duplicate detected: ${url}`);
+      console.log(`Duplicate detected: ${url}`);
       return { message: "Document already exists", existingDocument: existingDoc };
     }
 
+    // Create document with normalized links
     const newDoc = await prisma.crawledDocument.create({
       data: {
         url,
@@ -42,7 +52,11 @@ export const storeDocument = async (documentData: DocumentData) => {
         contentHash,
         crawlDepth,
         ipAddress,
-        links: { create: links.map((link) => ({ url: link })) },
+        links: { 
+          create: links
+            .slice(0, 10)  // Limit to 10 links
+            .map((link) => ({ url: link })) 
+        },
       },
     });
 
@@ -50,7 +64,7 @@ export const storeDocument = async (documentData: DocumentData) => {
     return { message: "Document added successfully", storedDoc: newDoc };
   } catch (error) {
     console.error(`Error storing document:`, error);
-    throw new Error("Failed to store document.");
+    throw new Error(`Failed to store document: ${(error as Error).message}`);
   }
 };
 
@@ -64,22 +78,29 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
 
     console.log(`User searched: ${query}`);
 
+    // Check cache first
     const cachedResults = await getCachedResults(query);
-    if (cachedResults) {
-      console.log("Returning cached results:", cachedResults);
+    if (cachedResults && cachedResults.length > 0) {
+      console.log(`Returning ${cachedResults.length} cached results for: ${query}`);
       res.json({ results: cachedResults });
       return;
     }
 
+    // Then check database
     const existingResults = await prisma.crawledDocument.findMany({
       where: {
         content: {
           contains: query,
+          mode: 'insensitive'  // Case-insensitive search
         },
       },
+      take: 20,  // Limit results
+      orderBy: {
+        crawlDepth: 'asc'  // Lower depth (more relevant) first
+      }
     });
 
-    console.log("Found documents in DB:", existingResults);
+    console.log(`Found ${existingResults.length} documents in DB for: ${query}`);
     if (existingResults.length > 0) {
       console.log("Returning results from DB");
       await cacheSearchResults(query, existingResults); // Cache results
@@ -87,41 +108,43 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    console.log("No results found. Triggering crawler...");
+    // If no results, trigger crawler
+    console.log(`No results found for "${query}". Triggering crawler...`);
     const crawlResults = await startCrawling(query); // Crawler fetches data
+    
     if (!Array.isArray(crawlResults)) {
       throw new Error("Crawler did not return an array of results.");
     }
 
-    console.log("Crawl results:", crawlResults);
-    if (crawlResults && crawlResults.length > 0) {
-      const storedDocs: { url: string; content: string }[] = [];
-      for (const doc of crawlResults) {
-        const exists = await isUrlCrawled(doc.url); 
-        if (!exists) {
-          const storedDoc = await storeDocument(doc); 
-          if (storedDoc.storedDoc) {
-            storedDocs.push({ url: storedDoc.storedDoc.url, content: storedDoc.storedDoc.content });
-          }
-        } else {
-          const existingDoc = await prisma.crawledDocument.findUnique({ where: { url: doc.url } });
-          if (existingDoc) {
-            storedDocs.push({ url: existingDoc.url, content: existingDoc.content });
-          }
-        }
-      }
-      await cacheSearchResults(query, storedDocs); 
-      res.json({ results: storedDocs });
+    console.log(`Crawler returned ${crawlResults.length} results for: ${query}`);
+    if (crawlResults.length > 0) {
+      // Format results for response
+      const formattedResults = crawlResults.map(doc => ({
+        url: doc.url,
+        content: doc.content.substring(0, 200) + '...',  // Truncate content for display
+        fullContent: doc.content,
+        crawlDepth: doc.crawlDepth
+      }));
+      
+      await cacheSearchResults(query, formattedResults); 
+      res.json({ results: formattedResults });
       return;
     }
 
-    res.json({ results: [], message: "No relevant pages found." });
+    // If still no results, return empty array
+    console.log(`No results found for "${query}" after crawling`);
+    res.json({ 
+      results: [], 
+      message: "No relevant pages found. Please try a different search query." 
+    });
   } catch (error) {
     console.error("Error in search API:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ 
+      error: "Internal Server Error",
+      message: (error as Error).message 
+    });
   }
 };
-
 
 export const isUrlCrawled = async (url: string): Promise<boolean> => {
   try {
